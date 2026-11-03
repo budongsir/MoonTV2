@@ -2,12 +2,20 @@
 
 'use client';
 
-import { Cat, Clover, Film, Home, Search, Star, Tv } from 'lucide-react';
+import {
+  Cat,
+  Clapperboard,
+  Clover,
+  Compass,
+  Film,
+  Home,
+  Search,
+  Trophy,
+  Tv,
+} from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { memo, useEffect, useState } from 'react';
-
-import { getCustomCategories } from '@/lib/config.client';
 
 import { useNavigationLoading } from './NavigationLoadingProvider';
 
@@ -20,12 +28,16 @@ interface MobileBottomNavProps {
 
 const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { startLoading } = useNavigationLoading();
 
-  // 当前激活路径：优先使用传入的 activePath，否则回退到浏览器地址
-  const currentActive = activePath ?? pathname;
+  // 当前激活路径：优先使用传入的 activePath，否则使用「路径 + 查询参数」。
+  // 必须带上查询参数，否则 /douban?type=xxx 这类导航项永远无法匹配到激活状态。
+  const searchQuery = searchParams?.toString() ?? '';
+  const currentActive =
+    activePath ?? (searchQuery ? `${pathname}?${searchQuery}` : pathname);
 
-  const [navItems, setNavItems] = useState([
+  const [navItems] = useState([
     { icon: Home, label: '首页', href: '/' },
     { icon: Search, label: '搜索', href: '/search' },
     {
@@ -39,6 +51,16 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
       href: '/douban?type=tv',
     },
     {
+      icon: Clapperboard,
+      label: '短剧',
+      href: '/douban?type=short',
+    },
+    {
+      icon: Compass,
+      label: '纪录片',
+      href: '/douban?type=doc',
+    },
+    {
       icon: Cat,
       label: '动漫',
       href: '/douban?type=anime',
@@ -47,6 +69,11 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
       icon: Clover,
       label: '综艺',
       href: '/douban?type=show',
+    },
+    {
+      icon: Trophy,
+      label: '榜单',
+      href: '/ranking',
     },
   ]);
 
@@ -64,33 +91,29 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
     }
   }, []);
 
-  useEffect(() => {
-    getCustomCategories().then((categories) => {
-      if (categories.length > 0) {
-        setNavItems((prevItems) => [
-          ...prevItems,
-          {
-            icon: Star,
-            label: '自定义',
-            href: '/douban?type=custom',
-          },
-        ]);
-      }
-    });
-  }, []);
-
   const isActive = (href: string) => {
-    const typeMatch = href.match(/type=([^&]+)/)?.[1];
-
     // 解码URL以进行正确的比较
     const decodedActive = decodeURIComponent(currentActive);
     const decodedItemHref = decodeURIComponent(href);
 
-    return (
-      decodedActive === decodedItemHref ||
-      (decodedActive.startsWith('/douban') &&
-        decodedActive.includes(`type=${typeMatch}`))
-    );
+    const [itemPath, itemQuery = ''] = decodedItemHref.split('?');
+    const [activePath, activeQuery = ''] = decodedActive.split('?');
+
+    // 带查询参数的导航项（如 /douban?type=movie）：先看完全匹配，
+    // 再看路径一致且 type 一致（查询参数顺序可能不同）
+    if (itemQuery) {
+      if (decodedActive === decodedItemHref) return true;
+      if (activePath !== itemPath) return false;
+      const itemType = itemQuery.match(/type=([^&]+)/)?.[1] ?? '';
+      const activeType =
+        activeQuery.match(/type=([^&]+)/)?.[1] ??
+        // /douban 未携带 type 时，页面默认展示电影
+        (itemPath === '/douban' ? 'movie' : '');
+      return itemType !== '' && itemType === activeType;
+    }
+
+    // 不带查询参数的导航项（如 /、/search、/ranking）：路径一致即视为激活
+    return activePath === itemPath;
   };
 
   return (
@@ -106,12 +129,12 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
       <ul className='flex items-center overflow-x-auto scrollbar-hide'>
         {navItems.map((item) => {
           const active = isActive(item.href);
-          
+
           // 简洁模式下只显示首页和搜索，但在服务器端渲染时先不渲染
           if (!isClient) {
             return null; // 服务器端渲染时不显示任何内容，避免闪烁
           }
-          
+
           if (simpleMode && !['/', '/search'].includes(item.href)) {
             return null;
           }
@@ -122,13 +145,13 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
               className='flex-shrink-0'
               style={{
                 width: simpleMode ? '50vw' : '20vw',
-                minWidth: simpleMode ? '50vw' : '20vw'
+                minWidth: simpleMode ? '50vw' : '20vw',
               }}
             >
               <Link
                 href={item.href}
                 className='flex flex-col items-center justify-center w-full h-14 gap-1 text-xs'
-                onClick={(e) => {
+                onClick={() => {
                   // 如果不是当前激活的链接，则触发加载动画
                   if (!active) {
                     startLoading();
@@ -136,10 +159,11 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
                 }}
               >
                 <item.icon
-                  className={`h-6 w-6 ${active
+                  className={`h-6 w-6 ${
+                    active
                       ? 'text-green-600 dark:text-green-400'
                       : 'text-gray-500 dark:text-gray-400'
-                    }`}
+                  }`}
                 />
                 <span
                   className={
